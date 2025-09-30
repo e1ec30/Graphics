@@ -1,0 +1,6 @@
+cscope*
+*.zip
+*.png
+.vscode
+main
+*.o
