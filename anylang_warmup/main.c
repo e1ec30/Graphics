@@ -72,9 +72,11 @@ void process_line(char* line, array* pixels, array* coords) {
             tok = strtok_r(NULL, " \t", &s);
             if (tok == NULL) break;
             p.x = atoi(tok);
+
             tok = strtok_r(NULL, " \t", &s);
             if (tok == NULL) break;
             p.y = atoi(tok);
+            
             app_darr(point, *coords, p);
         }
         return;
