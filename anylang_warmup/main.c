@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <stdbool.h>
+#include <math.h>
 
 typedef struct{
     int x;
@@ -124,6 +125,20 @@ void process_line(char* line, array* pixels, array* coords) {
         save_image(img, image_name);
         free_image(img);
         return;
+    }
+
+    if (strcmp(tok, "line") == 0) {
+
+        // An experiment, to first implement DDA with lines, before going to triangles
+
+        // The two coordinate pairs
+        int x0 = atoi(strok_r(NULL, " \t", &s));
+        int x1 = atoi(strok_r(NULL, " \t", &s));
+        int y0 = atoi(strok_r(NULL, " \t", &s));
+        int y1 = atoi(strok_r(NULL, " \t", &s));
+        
+        
+       
     }
 }
 
