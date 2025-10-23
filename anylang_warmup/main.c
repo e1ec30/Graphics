@@ -127,19 +127,7 @@ void process_line(char* line, array* pixels, array* coords) {
         return;
     }
 
-    if (strcmp(tok, "line") == 0) {
 
-        // An experiment, to first implement DDA with lines, before going to triangles
-
-        // The two coordinate pairs
-        int x0 = atoi(strok_r(NULL, " \t", &s));
-        int x1 = atoi(strok_r(NULL, " \t", &s));
-        int y0 = atoi(strok_r(NULL, " \t", &s));
-        int y1 = atoi(strok_r(NULL, " \t", &s));
-        
-        
-       
-    }
 }
 
 //Implement this function to see which pixels were actually plotted
