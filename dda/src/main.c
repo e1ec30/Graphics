@@ -1,3 +1,4 @@
+#include <uselibpng.h>
 #include <gsl/gsl_vector.h>
 #include <gsl/gsl_matrix.h>
 #include <stdio.h>
@@ -8,33 +9,37 @@
 #include <stdbool.h>
 #include <math.h>
 
-
-typedef struct {
+typedef struct
+{
     size_t count;
     size_t capacity;
-    void* xs;
+    void *xs;
 } array;
 
-#define new_darr(T, n) ((array) { \
-    .count = 0, \
-    .capacity = (n), \
-    .xs = malloc(sizeof(T) * (n)) \
-})
+#define new_darr(T, n) ((array){ \
+    .count = 0,                  \
+    .capacity = (n),             \
+    .xs = malloc(sizeof(T) * (n))})
 
-#define app_darr(T, x, e) do { \
-    if ((x).count >= (x).capacity) { \
-        (x).capacity = (x).capacity ? (x).capacity * 2 : 1; \
-        (x).xs = realloc((x).xs, sizeof(T) * (x).capacity); \
-    } \
-    ((T*)(x).xs)[(x).count++] = (e); \
-} while(0)
+#define app_darr(T, x, e)                                       \
+    do                                                          \
+    {                                                           \
+        if ((x).count >= (x).capacity)                          \
+        {                                                       \
+            (x).capacity = (x).capacity ? (x).capacity * 2 : 1; \
+            (x).xs = realloc((x).xs, sizeof(T) * (x).capacity); \
+        }                                                       \
+        ((T *)(x).xs)[(x).count++] = (e);                       \
+    } while (0)
 
-#define free_darr(x) do { \
-    free((x).xs); \
-    (x).xs = NULL; \
-    (x).count = 0; \
-    (x).capacity = 0; \
-} while(0)
+#define free_darr(x)      \
+    do                    \
+    {                     \
+        free((x).xs);     \
+        (x).xs = NULL;    \
+        (x).count = 0;    \
+        (x).capacity = 0; \
+    } while (0)
 
 char *image_name;
 size_t width, height;
@@ -43,67 +48,206 @@ array color;
 array textcoord;
 array pointsize;
 
-void init_arrays() {
-    position = new_darr(gsl_vector*, 0);
-    color = new_darr(gsl_vector*, 0);
-    textcoord = new_darr(gsl_vector*, 0);
-    pointsize = new_darr(double, 0);
+void init_arrays()
+{
+    position = new_darr(gsl_vector *, 20);
+    color = new_darr(gsl_vector *, 20);
+    textcoord = new_darr(gsl_vector *, 20);
+    pointsize = new_darr(double, 20);
 }
 
 // Next, copy paste code from anylang warmup for line-by-line processing
 // And then start with DDA, then scanline
 
-void process_line(char *line) {
-    char *s = NULL;
-    char *tok = strok_r(line, " \t", &s);
+// Swap two pointers
+void swap(void **a, void **b)
+{
 
-    if (strcmp(tok, "size") == 0) {
+    void *temp = *a;
+    *a = *b;
+    *b = temp;
+}
+
+void dump_image(image_t *img) {
+    for (int i = 0; i < img->width; i++) {
+        for (int j = 0; j < img->height; j++) {
+            int r = pixel_xy(img, i, j).red;
+            printf("%d ", r);
+        }
+        printf("\n");
+    }
+}
+
+void putpixel(gsl_vector *p, image_t *img)
+{
+    char x = gsl_vector_get(p, 0);
+    char y = gsl_vector_get(p, 1);
+
+    pixel_xy(img, x, y).red = 255;
+    pixel_xy(img, x, y).alpha = 255;
+}
+
+// A line between two vectors a and b where the dimension d should have integer coordinates
+void dda_draw_line(gsl_vector *a, gsl_vector *b, size_t d, image_t *img)
+{
+    float a_d = gsl_vector_get(a, d);
+    float b_d = gsl_vector_get(b, d);
+
+    if (a_d == b_d)
+        return;
+
+    if (a_d > b_d)
+        swap((void**)&a, (void**)&b);
+
+    // The difference vector delta = b - a. First copy b, and then subtract a from it.
+    gsl_vector *delta = gsl_vector_alloc(b->size);
+    gsl_vector_memcpy(delta, b);
+    gsl_vector_sub(delta, a);
+
+    // s = delta / d
+    gsl_vector *s = delta;
+    gsl_vector_scale(s, (1 / gsl_vector_get(delta, d)));
+
+    // e = ceil(a_d) - a_d
+    float e = ceilf(a_d) - a_d;
+
+    // o = es
+    gsl_vector *o = gsl_vector_alloc(s->size);
+    gsl_vector_memcpy(o, s);
+    gsl_vector_scale(o, e);
+
+    // p = o + a
+    gsl_vector *p = o;
+    gsl_vector_add(p, a);
+
+    // while p_d < b_d
+    while (gsl_vector_get(p, d) < gsl_vector_get(b, d))
+    {
+        // Do what you want with p
+        putpixel(p, img);
+
+        // Add s to p
+        gsl_vector_add(p, s);
+    }
+}
+
+void process_line(char *line)
+{
+    char *s = NULL;
+    char *tok = strtok_r(line, " \t", &s);
+
+    if (strcmp(tok, "size") == 0)
+    {
 
         int n = atoi(strtok_r(NULL, " \t", &s));
 
         float x, y, z = 0.0, w = 1.0;
         char *d = NULL;
 
-        while (1) { 
-           d = strtok_r(NULL, " \t", &s);
-           if (d == NULL) break;
-           
-           x = atof(d);
-           y = atof(strtok_r(NULL, " \t", &s));
-           
-           if (s == 3) z = atof(strtok_r(NULL, " \t", &s));
-           if (s == 4) w = atof(strtok_r(NULL, " \t", &s));
+        while (1)
+        {
+            d = strtok_r(NULL, " \t", &s);
+            if (d == NULL)
+                break;
 
+            x = atof(d);
+            y = atof(strtok_r(NULL, " \t", &s));
+
+            if (n == 3)
+                z = atof(strtok_r(NULL, " \t", &s));
+            else if (n == 4)
+                w = atof(strtok_r(NULL, " \t", &s));
+
+            gsl_vector *pos_vec = gsl_vector_alloc(4);
+
+            gsl_vector_set(pos_vec, 0, x);
+            gsl_vector_set(pos_vec, 1, y);
+            gsl_vector_set(pos_vec, 2, z);
+            gsl_vector_set(pos_vec, 3, w);
+
+            app_darr(gsl_vector *, position, pos_vec);
         }
 
         return;
     }
-    if (strcmp(tok, "png") == 0) {
-        //There are 3 tokens left
-        //The width
+
+    if (strcmp(tok, "color") == 0)
+    {
+
+        int n = atoi(strtok_r(NULL, " \t", &s));
+
+        float r, g, b, a = 0.0;
+        char *d = NULL;
+
+        while (1)
+        {
+            d = strtok_r(NULL, " \t", &s);
+            if (d == NULL)
+                break;
+
+            r = atof(d);
+            g = atof(strtok_r(NULL, " \t", &s));
+
+            b = atof(strtok_r(NULL, " \t", &s));
+            if (n == 4)
+                a = atof(strtok_r(NULL, " \t", &s));
+
+            gsl_vector *color_vec = gsl_vector_alloc(4);
+
+            gsl_vector_set(color_vec, 0, r);
+            gsl_vector_set(color_vec, 1, g);
+            gsl_vector_set(color_vec, 2, b);
+            gsl_vector_set(color_vec, 3, a);
+
+            app_darr(gsl_vector *, color, color_vec);
+        }
+
+        return;
+    }
+    if (strcmp(tok, "png") == 0)
+    {
+        // There are 3 tokens left
+        // The width
         char *w = strtok_r(NULL, " \t", &s);
         width = atoi(w);
 
-        //The height
+        // The height
         char *h = strtok_r(NULL, " \t", &s);
         height = atoi(h);
 
-        //The filename
+        // The filename
         image_name = strtok_r(NULL, " \t", &s);
         // printf("Width: %zu\nHeight: %zu\nName: %s\n", width, height, image_name);
         return;
     }
+
+    if (strcmp(tok, "line") == 0) {
+        gsl_vector *a = ( (gsl_vector**)( position.xs ) )[0];
+        gsl_vector *b = ( (gsl_vector**)( position.xs ) )[1];
+
+        image_t *img = new_image(width, height);
+
+        dda_draw_line(a, b, 1, img);
+
+        save_image(img, image_name);
+        // dump_image(img);
+        free_image(img);
+        return;
+    }
 }
 
-void process_commands(char *filename) {
+void process_commands(char *filename)
+{
     int fd;
     off_t len;
-    void* data;
+    void *data;
     char *saveptr = NULL;
-    int i = 0;
     char *line;
 
-    if ((fd = open(filename, O_RDONLY)) == -1) {
+    init_arrays();
+
+    if ((fd = open(filename, O_RDONLY)) == -1)
+    {
         fprintf(stderr, "%s: ", filename);
         perror("Couldn't open file");
         exit(-1);
@@ -114,14 +258,16 @@ void process_commands(char *filename) {
 
     data = malloc((size_t)len);
 
-    if (read(fd, data, len) != len) {
+    if (read(fd, data, len) != len)
+    {
         perror("read");
         free(data);
         exit(1);
     }
 
     line = strtok_r(data, "\r\n", &saveptr);
-    while (line != NULL) {
+    while (line != NULL)
+    {
         // printf("%d: %s\n\n", ++i, line);
         process_line(line);
         // puts("\n");
@@ -132,32 +278,18 @@ void process_commands(char *filename) {
     free(data);
 }
 
-int main(int argc, char** argv) {
-    int fd;
-    off_t len;
-    void* data;
-    char *saveptr = NULL;
-    int i = 0;
-    char *line;
-    char *filename;
+int main(int argc, char **argv)
+{
+   char *filename;
 
-    if (argc < 2) {
-        fprintf(stderr, "Usage: %s [-d] <inputfile.txt>", argv[0]);
+    if (argc < 2)
+    {
+        fprintf(stderr, "Usage: %s <inputfile.txt>", argv[0]);
         exit(1);
     }
 
+    filename = argv[1];
+    process_commands(filename);
 
-    if (argc >= 3 & strcmp(argv[1], "-d") == 0) {
-        filename = argv[2];
-        dump_image(filename);
-    }
-    else {
-        filename = argv[1];
-        process_commands(filename);
-    }
-
-    close(fd);
-    free(data);
     exit(0);
-
 }
