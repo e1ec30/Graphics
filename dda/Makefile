@@ -1,6 +1,7 @@
 GSL_DIR = libs/gsl-install
-CFLAGS = -I$(GSL_DIR)/include -I./libs -Wall -ggdb
+CFLAGS = -I$(GSL_DIR)/include -I./libs -Wall -ggdb 
 LDFLAGS = -L$(GSL_DIR)/lib -lgsl -lgslcblas -lm -lpng
+CC = clang
 EXEC = dda_program
 
 $(EXEC): src/main.c libs/uselibpng.c

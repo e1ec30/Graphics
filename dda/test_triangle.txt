@@ -1,0 +1,9 @@
+png 80 80 points1.png
+sRGB
+depth
+
+color 3  .5 0 0  .5 0 0  .5 0 0    0 .5 0  0 .5 0  0 .5 0    0 0 1  0 0 1  0 0 1
+position 2 40 0 0 40 80 40 40 0 40 80 80 40 
+
+drawArraysTriangles 0 6
+
