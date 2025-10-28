@@ -1,6 +1,9 @@
 cscope*
+**/dda_program
+compile_commands.json
 *.zip
 *.png
 .vscode
 main
 *.o
+.cache
