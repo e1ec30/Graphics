@@ -1,5 +1,5 @@
 cscope*
-**/dda_program
+dda/dda_program
 compile_commands.json
 *.zip
 *.png
