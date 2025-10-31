@@ -16,6 +16,12 @@ typedef struct {
   void *xs;
 } array;
 
+typedef union {
+    float a[4];
+    struct {float x, y, z, w;};
+    struct {float r, g, b, o;};
+  } point;
+
 #define new_darr(T, n)                                                         \
   ((array){.count = 0, .capacity = (n), .xs = malloc(sizeof(T) * (n))})
 
@@ -50,6 +56,24 @@ void init_arrays() {
   pointsize = new_darr(double, 20);
 }
 
+void dump_vector(gsl_vector *v) {
+  for (int i = 0; i < v->size; i++) {
+    printf("%d: %g\t", i, gsl_vector_get(v, i));
+  }
+  puts("");
+}
+
+void ndc_to_pixel(gsl_vector *v, size_t w, size_t h) {
+  float x = gsl_vector_get(v, 0);
+  float y = gsl_vector_get(v, 1);
+
+  float new_x = (x + 1.0f) * (w / 2);
+  float new_y = (y + 1.0f) * (h / 2);
+
+  gsl_vector_set(v, 0, new_x);
+  gsl_vector_set(v, 1, new_y);
+}
+
 // Next, copy paste code from anylang warmup for line-by-line processing
 // And then start with DDA, then scanline
 
@@ -63,16 +87,12 @@ void swap(void **a, void **b) {
 
 // Sort by the d component
 void sort_vec3(gsl_vector **a, gsl_vector **b, gsl_vector **c, size_t d) {
-  float a_y = gsl_vector_get(*a, 1);
-  float b_y = gsl_vector_get(*b, 1);
-  float c_y = gsl_vector_get(*c, 1);
-
   // Bubble Sort
-  if (a_y > b_y)
+  if (gsl_vector_get(*a,d) > gsl_vector_get(*b,d))
     swap((void **)a, (void **)b);
-  if (b_y > c_y)
+  if (gsl_vector_get(*b,d) > gsl_vector_get(*c,d))
     swap((void **)b, (void **)c);
-  if (a_y > b_y)
+  if (gsl_vector_get(*a,d) > gsl_vector_get(*b,d))
     swap((void **)a, (void **)b);
 }
 
@@ -87,16 +107,21 @@ void dump_image(image_t *img) {
 }
 
 void putpixel(gsl_vector *p, gsl_vector* color, image_t *img) {
+
   size_t x = (size_t)(gsl_vector_get(p, 0));
   size_t y = (size_t)(gsl_vector_get(p, 1));
 
   // printf("X: float: %.2f, size_t: %ld\n", x, (size_t)x);
   // printf("Y: float: %.2f, size_t: %ld\n", y, (size_t)y);
-
+  // printf("x: %ld\n", x);
+  // printf("y: %ld\n", y);
+  
   float r = gsl_vector_get(color, 0);
   float g = gsl_vector_get(color, 1);
   float b = gsl_vector_get(color, 2);
   float a = gsl_vector_get(color, 3);
+
+  // printf("r: %.3f g: %.3f b: %.3f a: %.3f\n", r * 255, g * 255, b * 255, a * 255);
 
   pixel_xy(img, x, y).red = r * 255;
   pixel_xy(img, x, y).green = g * 255;
@@ -106,13 +131,13 @@ void putpixel(gsl_vector *p, gsl_vector* color, image_t *img) {
 
 // A line between two vectors a and b where the dimension d should have integer
 // coordinates
-void dda_draw_line(gsl_vector *a, gsl_vector *b, size_t d, image_t *img,
+bool dda_draw_line(gsl_vector *a, gsl_vector *b, size_t d, image_t *img,
                    gsl_vector **p_out, gsl_vector **s_out, gsl_vector *color, bool draw) {
   float a_d = gsl_vector_get(a, d);
   float b_d = gsl_vector_get(b, d);
 
   if (a_d == b_d)
-    return;
+    return false;
 
   if (a_d > b_d)
     swap((void **)&a, (void **)&b);
@@ -153,6 +178,7 @@ void dda_draw_line(gsl_vector *a, gsl_vector *b, size_t d, image_t *img,
       gsl_vector_add(p, s);
     }
   }
+  return true;
 }
 
 // Void Scanline, where a, b, c are vertices
@@ -161,15 +187,24 @@ void dda_scan_line(gsl_vector *a, gsl_vector *b, gsl_vector *c,
   // First, we sort, so that a is the smallest and c is the biggest
   sort_vec3(&a, &b, &c, 1);
 
+  ndc_to_pixel(a, width, height);
+  ndc_to_pixel(b, width, height);
+  ndc_to_pixel(c, width, height);
+
+  // printf("Scanline for:\n");
+  // dump_vector(a);
+  // dump_vector(b);
+  // dump_vector(c);
+
   // DDA along a to c
   gsl_vector *p_long = gsl_vector_alloc(a->size);
   gsl_vector *s_long = gsl_vector_alloc(a->size);
-  dda_draw_line(a, c, 1, img, &p_long, &s_long, color, false);
+  if ( !dda_draw_line(a, c, 1, img, &p_long, &s_long, color, false) ) return;
 
   // DDA along a to b
   gsl_vector *p = gsl_vector_alloc(a->size);
   gsl_vector *s = gsl_vector_alloc(a->size);
-  dda_draw_line(a, b, 1, img, &p, &s, color, false);
+  if ( !dda_draw_line(a, b, 1, img, &p, &s, color, false) ) return ;
 
   while (gsl_vector_get(p, 1) < gsl_vector_get(b, 1)) {
 
@@ -184,7 +219,7 @@ void dda_scan_line(gsl_vector *a, gsl_vector *b, gsl_vector *c,
   // p_long & s_long remain the same
   // But we can just reassign p and s
 
-  dda_draw_line(b, c, 1, img, &p, &s, color, false);
+  if ( !dda_draw_line(b, c, 1, img, &p, &s, color, false) ) return;
   while (gsl_vector_get(p, 1) < gsl_vector_get(c, 1)) {
 
     // Run DDA in x and actually draw the pixels
@@ -203,31 +238,53 @@ void process_line(char *line) {
 
     int n = atoi(strtok_r(NULL, " \t", &s));
 
-    float x, y, z = 0.0, w = 1.0;
+    // float x, y, z = 0.0, w = 1.0;
     char *d = NULL;
 
     while (1) {
-      d = strtok_r(NULL, " \t", &s);
-      if (d == NULL)
-        break;
-
-      x = atof(d);
-      y = atof(strtok_r(NULL, " \t", &s));
-
-      if (n == 3)
-        z = atof(strtok_r(NULL, " \t", &s));
-      else if (n == 4)
-        w = atof(strtok_r(NULL, " \t", &s));
-
+      bool b = false;
+      point p = {.a = {0.0, 0.0, 0.0, 1.0}};
+      for (int i = 0; i < n; i++) {
+        d = strtok_r(NULL, " \t", &s);
+        if (d == NULL) { 
+          b = true;
+          break;
+        }
+        p.a[i] = atof(d);
+      }
+      if (b) break;
       gsl_vector *pos_vec = gsl_vector_alloc(4);
 
-      gsl_vector_set(pos_vec, 0, x);
-      gsl_vector_set(pos_vec, 1, y);
-      gsl_vector_set(pos_vec, 2, z);
-      gsl_vector_set(pos_vec, 3, w);
+      gsl_vector_set(pos_vec, 0, p.x);
+      gsl_vector_set(pos_vec, 1, p.y);
+      gsl_vector_set(pos_vec, 2, p.z);
+      gsl_vector_set(pos_vec, 3, p.w);
 
       app_darr(gsl_vector *, position, pos_vec);
     }
+
+    // while (1) {
+    //   d = strtok_r(NULL, " \t", &s);
+    //   if (d == NULL)
+    //     break;
+    //
+    //   x = atof(d);
+    //   y = atof(strtok_r(NULL, " \t", &s));
+    //
+    //   if (n == 3)
+    //     z = atof(strtok_r(NULL, " \t", &s));
+    //   else if (n == 4)
+    //     w = atof(strtok_r(NULL, " \t", &s));
+    //
+    //   gsl_vector *pos_vec = gsl_vector_alloc(4);
+    //
+    //   gsl_vector_set(pos_vec, 0, x);
+    //   gsl_vector_set(pos_vec, 1, y);
+    //   gsl_vector_set(pos_vec, 2, z);
+    //   gsl_vector_set(pos_vec, 3, w);
+    //
+    //   app_darr(gsl_vector *, position, pos_vec);
+    // }
 
     return;
   }
@@ -236,30 +293,53 @@ void process_line(char *line) {
 
     int n = atoi(strtok_r(NULL, " \t", &s));
 
-    float r, g, b, a = 1.0;
+    // float r, g, b, a = 1.0;
     char *d = NULL;
 
+    // while (1) {
+    //   d = strtok_r(NULL, " \t", &s);
+    //   if (d == NULL)
+    //     break;
+    //
+    //   r = atof(d);
+    //   g = atof(strtok_r(NULL, " \t", &s));
+    //
+    //   b = atof(strtok_r(NULL, " \t", &s));
+    //   if (n == 4)
+    //     a = atof(strtok_r(NULL, " \t", &s));
+    //
+    //   gsl_vector *color_vec = gsl_vector_alloc(4);
+    //
+    //   gsl_vector_set(color_vec, 0, r);
+    //   gsl_vector_set(color_vec, 1, g);
+    //   gsl_vector_set(color_vec, 2, b);
+    //   gsl_vector_set(color_vec, 3, a);
+    //
+    //   app_darr(gsl_vector *, color, color_vec);
+    // }
+    //
     while (1) {
-      d = strtok_r(NULL, " \t", &s);
-      if (d == NULL)
-        break;
-
-      r = atof(d);
-      g = atof(strtok_r(NULL, " \t", &s));
-
-      b = atof(strtok_r(NULL, " \t", &s));
-      if (n == 4)
-        a = atof(strtok_r(NULL, " \t", &s));
-
+      bool b = false;
+      point p = {.a = {0.0, 0.0, 0.0, 1.0}};
+      for (int i = 0; i < n; i++) {
+        d = strtok_r(NULL, " \t", &s);
+        if (d == NULL) { 
+          b = true;
+          break;
+        }
+        p.a[i] = atof(d);
+      }
+      if (b) break;
       gsl_vector *color_vec = gsl_vector_alloc(4);
 
-      gsl_vector_set(color_vec, 0, r);
-      gsl_vector_set(color_vec, 1, g);
-      gsl_vector_set(color_vec, 2, b);
-      gsl_vector_set(color_vec, 3, a);
+      gsl_vector_set(color_vec, 0, p.r);
+      gsl_vector_set(color_vec, 1, p.g);
+      gsl_vector_set(color_vec, 2, p.b);
+      gsl_vector_set(color_vec, 3, p.o);
 
       app_darr(gsl_vector *, color, color_vec);
     }
+
 
     return;
   }
@@ -312,7 +392,7 @@ void process_line(char *line) {
       dda_scan_line(a, b, c, color, img);
 
       i += 3;
-      j++;
+      j += 3;
     }
     save_image(img, image_name);
     free_image(img);
