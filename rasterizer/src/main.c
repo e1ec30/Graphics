@@ -42,8 +42,9 @@ typedef union {
     (x).capacity = 0;                                                          \
   } while (0)
 
-char *image_name;
+char *image_name = NULL;
 size_t width, height;
+image_t *img = NULL;
 array position;
 array color;
 array textcoord;
@@ -67,8 +68,8 @@ void ndc_to_pixel(gsl_vector *v, size_t w, size_t h) {
   float x = gsl_vector_get(v, 0);
   float y = gsl_vector_get(v, 1);
 
-  float new_x = (x + 1.0f) * (w / 2);
-  float new_y = (y + 1.0f) * (h / 2);
+  float new_x = (x + 1.0f) * (w / 2.0f);
+  float new_y = (y + 1.0f) * (h / 2.0f);
 
   gsl_vector_set(v, 0, new_x);
   gsl_vector_set(v, 1, new_y);
@@ -113,7 +114,7 @@ void putpixel(gsl_vector *p, gsl_vector* color, image_t *img) {
 
   // printf("X: float: %.2f, size_t: %ld\n", x, (size_t)x);
   // printf("Y: float: %.2f, size_t: %ld\n", y, (size_t)y);
-  // printf("x: %ld\n", x);
+  // printf("x: %ld, width: %ld, y: %ld, height: %ld\n", x, width, y, height);
   // printf("y: %ld\n", y);
   
   float r = gsl_vector_get(color, 0);
@@ -122,6 +123,8 @@ void putpixel(gsl_vector *p, gsl_vector* color, image_t *img) {
   float a = gsl_vector_get(color, 3);
 
   // printf("r: %.3f g: %.3f b: %.3f a: %.3f\n", r * 255, g * 255, b * 255, a * 255);
+
+  if ( (x > width - 1) || (y > height - 1) ) return;
 
   pixel_xy(img, x, y).red = r * 255;
   pixel_xy(img, x, y).green = g * 255;
@@ -151,7 +154,7 @@ bool dda_draw_line(gsl_vector *a, gsl_vector *b, size_t d, image_t *img,
   // s = delta / d
   gsl_vector *s = delta;
   gsl_vector_scale(s, (1 / gsl_vector_get(delta, d)));
-  if (p_out)
+  if (s_out)
     gsl_vector_memcpy(*s_out, s);
 
   // e = ceil(a_d) - a_d
@@ -223,7 +226,7 @@ void dda_scan_line(gsl_vector *a, gsl_vector *b, gsl_vector *c,
   while (gsl_vector_get(p, 1) < gsl_vector_get(c, 1)) {
 
     // Run DDA in x and actually draw the pixels
-    // This is the top half of the triangle
+    // This is the bottom half of the triangle
     dda_draw_line(p, p_long, 0, img, NULL, NULL, color, true);
     gsl_vector_add(p, s);
     gsl_vector_add(p_long, s_long);
@@ -263,30 +266,7 @@ void process_line(char *line) {
       app_darr(gsl_vector *, position, pos_vec);
     }
 
-    // while (1) {
-    //   d = strtok_r(NULL, " \t", &s);
-    //   if (d == NULL)
-    //     break;
-    //
-    //   x = atof(d);
-    //   y = atof(strtok_r(NULL, " \t", &s));
-    //
-    //   if (n == 3)
-    //     z = atof(strtok_r(NULL, " \t", &s));
-    //   else if (n == 4)
-    //     w = atof(strtok_r(NULL, " \t", &s));
-    //
-    //   gsl_vector *pos_vec = gsl_vector_alloc(4);
-    //
-    //   gsl_vector_set(pos_vec, 0, x);
-    //   gsl_vector_set(pos_vec, 1, y);
-    //   gsl_vector_set(pos_vec, 2, z);
-    //   gsl_vector_set(pos_vec, 3, w);
-    //
-    //   app_darr(gsl_vector *, position, pos_vec);
-    // }
-
-    return;
+     return;
   }
 
   if (strcmp(tok, "color") == 0) {
@@ -296,29 +276,7 @@ void process_line(char *line) {
     // float r, g, b, a = 1.0;
     char *d = NULL;
 
-    // while (1) {
-    //   d = strtok_r(NULL, " \t", &s);
-    //   if (d == NULL)
-    //     break;
-    //
-    //   r = atof(d);
-    //   g = atof(strtok_r(NULL, " \t", &s));
-    //
-    //   b = atof(strtok_r(NULL, " \t", &s));
-    //   if (n == 4)
-    //     a = atof(strtok_r(NULL, " \t", &s));
-    //
-    //   gsl_vector *color_vec = gsl_vector_alloc(4);
-    //
-    //   gsl_vector_set(color_vec, 0, r);
-    //   gsl_vector_set(color_vec, 1, g);
-    //   gsl_vector_set(color_vec, 2, b);
-    //   gsl_vector_set(color_vec, 3, a);
-    //
-    //   app_darr(gsl_vector *, color, color_vec);
-    // }
-    //
-    while (1) {
+     while (1) {
       bool b = false;
       point p = {.a = {0.0, 0.0, 0.0, 1.0}};
       for (int i = 0; i < n; i++) {
@@ -340,7 +298,6 @@ void process_line(char *line) {
       app_darr(gsl_vector *, color, color_vec);
     }
 
-
     return;
   }
   if (strcmp(tok, "png") == 0) {
@@ -355,27 +312,13 @@ void process_line(char *line) {
 
     // The filename
     image_name = strtok_r(NULL, " \t", &s);
-    // printf("Width: %zu\nHeight: %zu\nName: %s\n", width, height, image_name);
+    printf("Width: %zu\nHeight: %zu\nName: %s\n", width, height, image_name);
+    img = new_image(width, height);
     return;
   }
 
-  // if (strcmp(tok, "line") == 0) {
-  // 	gsl_vector *a = ( (gsl_vector**)( position.xs ) )[0];
-  // 	gsl_vector *b = ( (gsl_vector**)( position.xs ) )[1];
-  //
-  // 	image_t *img = new_image(width, height);
-  //
-  // 	dda_draw_line(a, b, 1, img);
-  //
-  // 	save_image(img, image_name);
-  // 	// dump_image(img);
-  // 	free_image(img);
-  // 	return;
-  // }
-
   if (strcmp(tok, "drawArraysTriangles") == 0) {
 
-    image_t *img = new_image(width, height);
     int first = atoi(strtok_r(NULL, " \t", &s));
     int count = atoi(strtok_r(NULL, " \t", &s));
 
@@ -394,8 +337,6 @@ void process_line(char *line) {
       i += 3;
       j += 3;
     }
-    save_image(img, image_name);
-    free_image(img);
     return;
   }
 }
@@ -435,7 +376,7 @@ void process_commands(char *filename) {
   }
 
   close(fd);
-  free(data);
+  // free(data);
 }
 
 int main(int argc, char **argv) {
@@ -448,6 +389,11 @@ int main(int argc, char **argv) {
 
   filename = argv[1];
   process_commands(filename);
+
+  if (img) {
+    save_image(img, image_name);
+    free_image(img);
+  }
 
   exit(0);
 }
