@@ -4,6 +4,7 @@
 #include <gsl/gsl_vector.h>
 #include <math.h>
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -42,6 +43,19 @@ typedef union {
     (x).capacity = 0;                                                          \
   } while (0)
 
+#define max(a, b) ((a) > (b) ? (a) : (b))
+
+enum VECTOR_POS  {
+  X = 0,
+  Y,
+  Z,
+  W,
+  R,
+  B,
+  G,
+  A
+};
+
 char *image_name = NULL;
 size_t width, height;
 image_t *img = NULL;
@@ -49,6 +63,31 @@ array position;
 array color;
 array textcoord;
 array pointsize;
+
+gsl_vector* merge_vectors(gsl_vector *a, gsl_vector *b) {
+  gsl_vector *merged = gsl_vector_alloc(a->size + b->size);
+
+  gsl_vector_view first_part = gsl_vector_subvector(merged, 0, a->size);
+  gsl_vector_view second_part = gsl_vector_subvector(merged, a->size, b->size);
+
+  gsl_vector_memcpy(&first_part.vector, a);
+  gsl_vector_memcpy(&second_part.vector, b);
+
+  return merged;
+}
+
+void divide_by_w(gsl_vector *v) {
+  float w = gsl_vector_get(v, W);
+  gsl_vector_scale(v, (1/w)); //Divide thru by w
+  gsl_vector_set(v, W, (1/w)); // Replace w with 1/w instead of 1
+}
+
+void divide_post_w(gsl_vector *v) {
+  float w = gsl_vector_get(v, W);
+  gsl_vector_view post_w = gsl_vector_subvector(v, R, v->size - 4);
+  gsl_vector_scale(&post_w.vector, (1 / w));
+  gsl_vector_set(v, W, (1/w));
+}
 
 void init_arrays() {
   position = new_darr(gsl_vector *, 20);
@@ -65,14 +104,14 @@ void dump_vector(gsl_vector *v) {
 }
 
 void ndc_to_pixel(gsl_vector *v, size_t w, size_t h) {
-  float x = gsl_vector_get(v, 0);
-  float y = gsl_vector_get(v, 1);
+  float x = gsl_vector_get(v, X);
+  float y = gsl_vector_get(v, Y);
 
   float new_x = (x + 1.0f) * (w / 2.0f);
   float new_y = (y + 1.0f) * (h / 2.0f);
 
-  gsl_vector_set(v, 0, new_x);
-  gsl_vector_set(v, 1, new_y);
+  gsl_vector_set(v, X, new_x);
+  gsl_vector_set(v, Y, new_y);
 }
 
 // Next, copy paste code from anylang warmup for line-by-line processing
@@ -107,24 +146,24 @@ void dump_image(image_t *img) {
   }
 }
 
-void putpixel(gsl_vector *p, gsl_vector* color, image_t *img) {
+void putpixel(gsl_vector *p, image_t *img) {
 
-  size_t x = (size_t)(gsl_vector_get(p, 0));
-  size_t y = (size_t)(gsl_vector_get(p, 1));
+  size_t x = (size_t)(gsl_vector_get(p, X));
+  size_t y = (size_t)(gsl_vector_get(p, Y));
+
+  if ( (x > width - 1) || (y > height - 1) ) return;
 
   // printf("X: float: %.2f, size_t: %ld\n", x, (size_t)x);
   // printf("Y: float: %.2f, size_t: %ld\n", y, (size_t)y);
-  // printf("x: %ld, width: %ld, y: %ld, height: %ld\n", x, width, y, height);
-  // printf("y: %ld\n", y);
+  printf("x: %ld, width: %ld, y: %ld, height: %ld\n", x, width, y, height);
+  printf("y: %ld\n", y);
   
-  float r = gsl_vector_get(color, 0);
-  float g = gsl_vector_get(color, 1);
-  float b = gsl_vector_get(color, 2);
-  float a = gsl_vector_get(color, 3);
+  float r = gsl_vector_get(p, R);
+  float g = gsl_vector_get(p, G);
+  float b = gsl_vector_get(p, B);
+  float a = gsl_vector_get(p, A);
 
   // printf("r: %.3f g: %.3f b: %.3f a: %.3f\n", r * 255, g * 255, b * 255, a * 255);
-
-  if ( (x > width - 1) || (y > height - 1) ) return;
 
   pixel_xy(img, x, y).red = r * 255;
   pixel_xy(img, x, y).green = g * 255;
@@ -135,7 +174,7 @@ void putpixel(gsl_vector *p, gsl_vector* color, image_t *img) {
 // A line between two vectors a and b where the dimension d should have integer
 // coordinates
 bool dda_draw_line(gsl_vector *a, gsl_vector *b, size_t d, image_t *img,
-                   gsl_vector **p_out, gsl_vector **s_out, gsl_vector *color, bool draw) {
+                   gsl_vector **p_out, gsl_vector **s_out, bool draw) {
   float a_d = gsl_vector_get(a, d);
   float b_d = gsl_vector_get(b, d);
 
@@ -175,7 +214,12 @@ bool dda_draw_line(gsl_vector *a, gsl_vector *b, size_t d, image_t *img,
   if (draw) {
     while (gsl_vector_get(p, d) < gsl_vector_get(b, d)) {
       // Do what you want with p
-      putpixel(p, color, img);
+      
+      // Divide post w
+      divide_post_w(p);
+
+      // Draw pixel
+      putpixel(p, img);
 
       // Add s to p
       gsl_vector_add(p, s);
@@ -184,17 +228,23 @@ bool dda_draw_line(gsl_vector *a, gsl_vector *b, size_t d, image_t *img,
   return true;
 }
 
-// Void Scanline, where a, b, c are vertices
+// Draw a triangle with the Scanline algorithm, where a, b, c are vertices
 void dda_scan_line(gsl_vector *a, gsl_vector *b, gsl_vector *c,
-                   gsl_vector *color, image_t *img) {
+                   image_t *img) {
   // First, we sort, so that a is the smallest and c is the biggest
   sort_vec3(&a, &b, &c, 1);
 
+  // Divide by w
+  divide_by_w(a);
+  divide_by_w(b);
+  divide_by_w(c);
+
+  // Convert to screen coordinates
   ndc_to_pixel(a, width, height);
   ndc_to_pixel(b, width, height);
   ndc_to_pixel(c, width, height);
 
-  // printf("Scanline for:\n");
+   // printf("Scanline for:\n");
   // dump_vector(a);
   // dump_vector(b);
   // dump_vector(c);
@@ -202,18 +252,18 @@ void dda_scan_line(gsl_vector *a, gsl_vector *b, gsl_vector *c,
   // DDA along a to c
   gsl_vector *p_long = gsl_vector_alloc(a->size);
   gsl_vector *s_long = gsl_vector_alloc(a->size);
-  if ( !dda_draw_line(a, c, 1, img, &p_long, &s_long, color, false) ) return;
+  if ( !dda_draw_line(a, c, Y, img, &p_long, &s_long, false) ) return;
 
   // DDA along a to b
   gsl_vector *p = gsl_vector_alloc(a->size);
   gsl_vector *s = gsl_vector_alloc(a->size);
-  if ( !dda_draw_line(a, b, 1, img, &p, &s, color, false) ) return ;
+  if ( !dda_draw_line(a, b, Y, img, &p, &s, false) ) return ;
 
-  while (gsl_vector_get(p, 1) < gsl_vector_get(b, 1)) {
+  while (gsl_vector_get(p, Y) < gsl_vector_get(b, 1)) {
 
     // Run DDA in x and actually draw the pixels
     // This is the top half of the triangle
-    dda_draw_line(p, p_long, 0, img, NULL, NULL, color, true);
+    dda_draw_line(p, p_long, X, img, NULL, NULL, true);
     gsl_vector_add(p, s);
     gsl_vector_add(p_long, s_long);
   }
@@ -222,12 +272,12 @@ void dda_scan_line(gsl_vector *a, gsl_vector *b, gsl_vector *c,
   // p_long & s_long remain the same
   // But we can just reassign p and s
 
-  if ( !dda_draw_line(b, c, 1, img, &p, &s, color, false) ) return;
-  while (gsl_vector_get(p, 1) < gsl_vector_get(c, 1)) {
+  if ( !dda_draw_line(b, c, Y, img, &p, &s, false) ) return;
+  while (gsl_vector_get(p, Y) < gsl_vector_get(c, 1)) {
 
     // Run DDA in x and actually draw the pixels
     // This is the bottom half of the triangle
-    dda_draw_line(p, p_long, 0, img, NULL, NULL, color, true);
+    dda_draw_line(p, p_long, X, img, NULL, NULL, true);
     gsl_vector_add(p, s);
     gsl_vector_add(p_long, s_long);
   }
@@ -258,10 +308,10 @@ void process_line(char *line) {
       if (b) break;
       gsl_vector *pos_vec = gsl_vector_alloc(4);
 
-      gsl_vector_set(pos_vec, 0, p.x);
-      gsl_vector_set(pos_vec, 1, p.y);
-      gsl_vector_set(pos_vec, 2, p.z);
-      gsl_vector_set(pos_vec, 3, p.w);
+      gsl_vector_set(pos_vec, X, p.x);
+      gsl_vector_set(pos_vec, Y, p.y);
+      gsl_vector_set(pos_vec, Z, p.z);
+      gsl_vector_set(pos_vec, W, p.w);
 
       app_darr(gsl_vector *, position, pos_vec);
     }
@@ -326,13 +376,23 @@ void process_line(char *line) {
     gsl_vector **colors = color.xs;
 
     int i = 0, j = 0;
+    // e1ec30: This is wrong, I need all three colors too, for interpolation purposes.
+    // should I just put everything into a long vector?
     while (i < count) {
-      gsl_vector *a = positions[first + i];
-      gsl_vector *b = positions[first + i + 1];
-      gsl_vector *c = positions[first + i + 2];
-      gsl_vector *color = colors[first + j];
+      gsl_vector *pos_a = positions[first + i];
+      gsl_vector *color_a = colors[first + j];
+      gsl_vector *a = merge_vectors(pos_a, color_a);
 
-      dda_scan_line(a, b, c, color, img);
+      gsl_vector *pos_b = positions[first + i + 1];
+      gsl_vector *color_b = colors[first + j + 1];
+      gsl_vector *b = merge_vectors(pos_b, color_b);
+
+      gsl_vector *pos_c = positions[first + i + 2];
+      gsl_vector *color_c = colors[first + j + 2];
+      gsl_vector *c = merge_vectors(pos_c, color_c);
+
+
+      dda_scan_line(a, b, c, img);
 
       i += 3;
       j += 3;
