@@ -64,6 +64,15 @@ array color;
 array textcoord;
 array pointsize;
 
+void dump_vector(gsl_vector *v) {
+  printf("%10s","[ ");
+  for (int i = 0; i < v->size; i++) {
+    printf("%.4f, ", gsl_vector_get(v, i));
+  }
+  printf("]\n");
+  puts("");
+}
+
 gsl_vector* merge_vectors(gsl_vector *a, gsl_vector *b) {
   gsl_vector *merged = gsl_vector_alloc(a->size + b->size);
 
@@ -77,16 +86,33 @@ gsl_vector* merge_vectors(gsl_vector *a, gsl_vector *b) {
 }
 
 void divide_by_w(gsl_vector *v) {
+  printf("%-10s","V before division:");
+  dump_vector(v);
+
   float w = gsl_vector_get(v, W);
   gsl_vector_scale(v, (1/w)); //Divide thru by w
   gsl_vector_set(v, W, (1/w)); // Replace w with 1/w instead of 1
+
+  printf("%-10s","V after division:");
+  dump_vector(v);
 }
 
-void divide_post_w(gsl_vector *v) {
-  float w = gsl_vector_get(v, W);
-  gsl_vector_view post_w = gsl_vector_subvector(v, R, v->size - 4);
+gsl_vector* divide_post_w(gsl_vector *v) {
+  // printf("%-10s","V before post_w:");
+  // dump_vector(v);
+
+  // I'm just going to make a copy of the pixel and return it, otherwise, this will affect dda
+  gsl_vector *ret = gsl_vector_alloc(v->size);
+  gsl_vector_memcpy(ret, v);
+
+  float w = gsl_vector_get(ret, W);
+  gsl_vector_view post_w = gsl_vector_subvector(ret, R, v->size - 4);
   gsl_vector_scale(&post_w.vector, (1 / w));
-  gsl_vector_set(v, W, (1/w));
+  gsl_vector_set(ret, W, (1/w));
+
+  return ret;
+  // printf("%-10s","V after post_w:");
+  // dump_vector(v);
 }
 
 void init_arrays() {
@@ -96,12 +122,6 @@ void init_arrays() {
   pointsize = new_darr(double, 20);
 }
 
-void dump_vector(gsl_vector *v) {
-  for (int i = 0; i < v->size; i++) {
-    printf("%d: %g\t", i, gsl_vector_get(v, i));
-  }
-  puts("");
-}
 
 void ndc_to_pixel(gsl_vector *v, size_t w, size_t h) {
   float x = gsl_vector_get(v, X);
@@ -148,6 +168,9 @@ void dump_image(image_t *img) {
 
 void putpixel(gsl_vector *p, image_t *img) {
 
+  // printf("plotting: ");
+  // dump_vector(p);
+  
   size_t x = (size_t)(gsl_vector_get(p, X));
   size_t y = (size_t)(gsl_vector_get(p, Y));
 
@@ -155,8 +178,8 @@ void putpixel(gsl_vector *p, image_t *img) {
 
   // printf("X: float: %.2f, size_t: %ld\n", x, (size_t)x);
   // printf("Y: float: %.2f, size_t: %ld\n", y, (size_t)y);
-  printf("x: %ld, width: %ld, y: %ld, height: %ld\n", x, width, y, height);
-  printf("y: %ld\n", y);
+  // printf("x: %ld, width: %ld, y: %ld, height: %ld\n", x, width, y, height);
+  // printf("y: %ld\n", y);
   
   float r = gsl_vector_get(p, R);
   float g = gsl_vector_get(p, G);
@@ -214,12 +237,12 @@ bool dda_draw_line(gsl_vector *a, gsl_vector *b, size_t d, image_t *img,
   if (draw) {
     while (gsl_vector_get(p, d) < gsl_vector_get(b, d)) {
       // Do what you want with p
-      
+
       // Divide post w
-      divide_post_w(p);
+      gsl_vector *r = divide_post_w(p);
 
       // Draw pixel
-      putpixel(p, img);
+      putpixel(r, img);
 
       // Add s to p
       gsl_vector_add(p, s);
@@ -244,7 +267,7 @@ void dda_scan_line(gsl_vector *a, gsl_vector *b, gsl_vector *c,
   ndc_to_pixel(b, width, height);
   ndc_to_pixel(c, width, height);
 
-   // printf("Scanline for:\n");
+  // printf("Scanline for:\n");
   // dump_vector(a);
   // dump_vector(b);
   // dump_vector(c);
