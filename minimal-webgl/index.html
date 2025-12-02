@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Minimal HTML to support WebGL</title>
+<script>
+function compileAndLinkGLSL() {
+    const vs_source = `#version 300 es
+    void main() {
+      gl_Position = vec4(sin(float(gl_VertexID)),
+                         cos(float(gl_VertexID)),
+                         0,
+                         1);
+    }`
+
+    const fs_source = `#version 300 es
+    precision highp float;
+    out vec4 anyNameYouWant;
+    void main() {
+        anyNameYouWant = vec4(1, 0, 0.5, 1);
+    }`
+
+    let vs = gl.createShader(gl.VERTEX_SHADER)
+    gl.shaderSource(vs, vs_source)
+    gl.compileShader(vs)
+    if (!gl.getShaderParameter(vs, gl.COMPILE_STATUS)) {
+        consol.error(gl.getShaderInfoLog(vs))
+        throw Error("Vertex shader compilation failed")
+    }
+
+    let fs = gl.createShader(gl.FRAGMENT_SHADER)
+    gl.shaderSource(fs, fs_source)
+    gl.compileShader(fs)
+    if (!gl.getShaderParameter(fs, gl.COMPILE_STATUS)) {
+        consol.error(gl.getShaderInfoLog(fs))
+        throw Error("Fragment shader compilation failed")
+    }
+
+    window.program = gl.createProgram()
+    gl.attachShader(program, vs)
+    gl.attachShader(program, fs)
+    gl.linkProgram(program)
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+        console.error(gl.getProgramInfoLog(program))
+        throw Error("Linking failed")
+    }
+}
+
+function draw() {
+    gl.useProgram(program)
+    const connection = gl.LINES // or gl.TRIANGLES or gl.POINTS
+    const offset = 0            // unused here, but required
+    const count = 12            // number of vertices to draw
+    gl.drawArrays(connection, offset, count)
+}
+
+window.addEventListener('load',(event)=>{
+    window.gl = document.querySelector('canvas').getContext('webgl2')
+    compileAndLinkGLSL()
+    draw()
+})
+</script>
+</head>
+<body>
+<canvas width="300" height="300"></canvas>
+</body>
+</html>
