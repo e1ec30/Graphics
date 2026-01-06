@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+	<script type="glsl" id="vertex">
+#version 300 es
+in vec4 position;
+in vec4 aColor;
+uniform mat4 mv;
+uniform mat4 p;
+
+out vec4 vColor;
+void main() {
+	gl_Position = p * mv * position;
+	vColor = aColor;
+}
+
+</script>
+	<script type="glsl" id="fragment">
+#version 300 es
+precision highp float;
+in vec4 vColor;
+out vec4 color;
+void main() {
+	color = vColor;
+}
+</script>
+	<script src="../math.js"></script>
+</head>
+
+<body>
+	<canvas id="canvas" height="400" width="600"></canvas>
+	<script>
+		var models = {
+			"tetrahedron": {
+				"positions": [[1, 1, 1], [-1, -1, 1], [-1, 1, -1], [1, -1, -1]],
+				"colors": [[1, 1, 1], [0, 0, 1], [0, 1, 0], [1, 0, 0]],
+				"triangles": [[0, 1, 2], [0, 2, 3], [0, 3, 1], [1, 2, 3]]
+			},
+
+			"octahedron": {
+				"positions": [[1, 0, 0], [0, 1, 0], [0, 0, 1], [0, -1, 0], [0, 0, -1], [-1, 0, 0]],
+				"colors": [[1, 0.5, 0.5], [0.5, 1, 0.5], [0.5, 0.5, 1], [0.5, 0, 0.5], [0.5, 0.5, 0], [0, 0.5, 0.5]],
+				"triangles": [[0, 1, 2], [0, 2, 3], [0, 3, 4], [0, 4, 1], [5, 1, 4], [5, 4, 3], [5, 3, 2], [5, 2, 1]]
+			}
+		}
+
+		function supplybufData(loc, data, mode) {
+			let buf = gl.createBuffer()
+			gl.bindBuffer(gl.ARRAY_BUFFER, buf)
+			const f32 = new Float32Array(data.flat())
+			gl.bufferData(gl.ARRAY_BUFFER, f32, mode)
+			gl.vertexAttribPointer(loc, data[0].length, gl.FLOAT, false, 0, 0)
+			gl.enableVertexAttribArray(loc)
+
+		}
+
+		function createModel(m) {
+			var vao = gl.createVertexArray()
+			gl.bindVertexArray(vao)
+
+			supplybufData(program.attrs["position"], m.positions, gl.STATIC_DRAW)
+			supplybufData(program.attrs["aColor"], m.colors, gl.STATIC_DRAW)
+
+			var indices = new Uint16Array(m.triangles.flat())
+			var iBuf = gl.createBuffer()
+			gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, iBuf)
+			gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW)
+
+			return {
+				mode: gl.TRIANGLES,
+				count: indices.length,
+				type: gl.UNSIGNED_SHORT,
+				vao: vao
+			}
+		}
+
+		function createModels() {
+			return {
+				tetrahedron: createModel(models.tetrahedron),
+				octahedron: createModel(models.octahedron)
+			}
+		}
+
+		function getUniformsAttrs(program) {
+			program.attrs = {}
+			program.uniforms = {}
+			for (let i = 0; i < gl.getProgramParameter(program, gl.ACTIVE_ATTRIBUTES); i++) {
+				const info = gl.getActiveAttrib(program, i)
+				program.attrs[info.name] = gl.getAttribLocation(program, info.name)
+			}
+			for (let i = 0; i < gl.getProgramParameter(program, gl.ACTIVE_UNIFORMS); i++) {
+				const info = gl.getActiveUniform(program, i)
+				program.uniforms[info.name] = gl.getUniformLocation(program, info.name)
+			}
+		}
+
+		function compileProgram(vs_source, fs_source) {
+			let vs = gl.createShader(gl.VERTEX_SHADER)
+			gl.shaderSource(vs, vs_source)
+			gl.compileShader(vs)
+
+			if (!gl.getShaderParameter(vs, gl.COMPILE_STATUS)) {
+				throw Error(gl.getShaderInfoLog(vs))
+			}
+
+			let fs = gl.createShader(gl.FRAGMENT_SHADER)
+			gl.shaderSource(fs, fs_source)
+			gl.compileShader(fs)
+
+			if (!gl.getShaderParameter(fs, gl.COMPILE_STATUS)) {
+				throw Error(gl.getShaderInfoLog(fs))
+			}
+			let program = gl.createProgram()
+			gl.attachShader(program, vs)
+			gl.attachShader(program, fs)
+			gl.linkProgram(program)
+
+			if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+				throw Error(gl.getProgramInfoLog(program))
+			}
+
+			getUniformsAttrs(program)
+			return program
+		}
+
+		function fillScreen() {
+			let canvas = document.querySelector('canvas')
+			document.body.style.margin = '0'
+			canvas.style.width = '100vw'
+			canvas.style.height = '100vh'
+			canvas.width = canvas.clientWidth
+			canvas.height = canvas.clientHeight
+			canvas.style.width = ''
+			canvas.style.height = ''
+			if (window.gl) {
+				gl.viewport(0, 0, canvas.width, canvas.height)
+				window.p = m4perspNegZ(0.1, 10, 1.5, canvas.width, canvas.height)
+			}
+		}
+
+		function tick(seconds) {
+			let s = seconds / 1000
+			gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
+			gl.useProgram(program)
+			let model = geoms.octahedron
+			gl.bindVertexArray(model.vao)
+			let m = m4rotY(Math.PI * s)
+			let v = m4view([1, 1, 3], [0, 0, 0], [0, 1, 0])
+			gl.uniformMatrix4fv(program.uniforms.mv, false, m4mul(v, m))
+			gl.uniformMatrix4fv(program.uniforms.p, false, p)
+			gl.drawElements(model.mode, model.count, model.type, 0)
+			requestAnimationFrame(tick)
+		}
+
+		window.addEventListener("load", async (event) => {
+			let vs_source = document.getElementById("vertex").textContent.trim()
+			let fs_source = document.getElementById("fragment").textContent.trim()
+			window.gl = document.getElementById("canvas").getContext("webgl2", {antialias: true, depth: true, preserveDrawing: true})
+			window.program = compileProgram(vs_source, fs_source)
+			window.geoms = createModels()
+			gl.enable(gl.DEPTH_TEST)
+			fillScreen()
+			window.addEventListener("resize", fillScreen)
+			requestAnimationFrame(tick)
+			// console.log(fs_source)
+			// Next step: properly set up camera, and then figure out the matrix for each of the required bodies
+		})
+	</script>
+</body>
+
+</html>
