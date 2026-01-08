@@ -139,17 +139,46 @@ void main() {
 			}
 		}
 
+		function drawGeom(model, m, v) {
+			gl.bindVertexArray(model.vao)
+			gl.uniformMatrix4fv(program.uniforms.mv, false, m4mul(v, m))
+			gl.uniformMatrix4fv(program.uniforms.p, false, p)
+			gl.drawElements(model.mode, model.count, model.type, 0)
+		}
+
+		function drawSun(s, m, v) {
+			let r = m4rotY(Math.PI * s)
+			drawGeom(geoms.octahedron, m4mul(r, m), v)
+			// returning only m because no one should inherit our rotation
+			return m
+		}
+
+		function drawEarth(s, m, v) {
+			let r = m4rotY(Math.PI * s * 3)
+			let m_r = m4mul(m, m4rotY(Math.PI * s * .5), m4trans(2, 0, 1))
+			let final_m = m4mul(m_r, r, m4scale(0.25, 0.25, 0.25))
+			drawGeom(geoms.octahedron, final_m, v)
+			return m_r
+		}
+
+		function drawMoon(s, m, v) {
+			let r = m4rotY(-(Math.PI * s * .75))
+			let m_r = m4mul(m, m4rotY(Math.PI * s * .75), m4trans(0.25, 0, 0.25))
+			let final_m = m4mul(m_r, r, m4scale(0.05, 0.05, 0.05))
+			drawGeom(geoms.tetrahedron, final_m, v)
+			return m_r
+		}
+
 		function tick(seconds) {
 			let s = seconds / 1000
 			gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
 			gl.useProgram(program)
-			let model = geoms.octahedron
-			gl.bindVertexArray(model.vao)
-			let m = m4rotY(Math.PI * s)
-			let v = m4view([1, 1, 3], [0, 0, 0], [0, 1, 0])
-			gl.uniformMatrix4fv(program.uniforms.mv, false, m4mul(v, m))
-			gl.uniformMatrix4fv(program.uniforms.p, false, p)
-			gl.drawElements(model.mode, model.count, model.type, 0)
+			let sun_m = m4trans(0, 0, 0)
+			let v = m4view([0, 0, 4], [0, 0, 0], [0, 1, 0])
+			// let v = m4view([1, 2, 3], [0, 0, 0], [0, 1, 0])
+			sun_m = drawSun(s, sun_m, v)
+			let m_r = drawEarth(s, sun_m, v)
+			drawMoon(s, m_r, v)
 			requestAnimationFrame(tick)
 		}
 
@@ -163,8 +192,6 @@ void main() {
 			fillScreen()
 			window.addEventListener("resize", fillScreen)
 			requestAnimationFrame(tick)
-			// console.log(fs_source)
-			// Next step: properly set up camera, and then figure out the matrix for each of the required bodies
 		})
 	</script>
 </body>
