@@ -146,6 +146,30 @@ void main() {
 			gl.drawElements(model.mode, model.count, model.type, 0)
 		}
 
+		function drawMars(s, m, v) {
+			let r = m4rotY(Math.PI * s * (3 * (1 / 2.2)))
+			let m_r = m4mul(m, m4rotY(Math.PI * s * (.5 * (1 / 1.9))), m4trans(2 * 1.6, -0.25, 1))
+			let final_m = m4mul(m_r, r, m4scale(0.20, 0.20, 0.20))
+			drawGeom(geoms.octahedron, final_m, v)
+			return m_r
+		}
+
+		function drawDeimos(s, m, v) {
+			let r = m4rotY(-(Math.PI * s * 1.6))
+			let m_r = m4mul(m, m4rotY((Math.PI * s * 1.6)), m4trans(.4, .1, 0.3))
+			let final_m = m4mul(m_r, r, m4scale(0.02, 0.02, 0.02))
+			drawGeom(geoms.tetrahedron, final_m, v)
+			return m_r
+		}
+
+		function drawPhobos(s, m, v) {
+			let r = m4rotY(-(Math.PI * s * 3))
+			let m_r = m4mul(m, m4rotY((Math.PI * s * 3)), m4trans(.20, 0, 0.15))
+			let final_m = m4mul(m_r, r, m4scale(0.05, 0.05, 0.05))
+			drawGeom(geoms.tetrahedron, final_m, v)
+			return m_r
+		}
+
 		function drawSun(s, m, v) {
 			let r = m4rotY(Math.PI * s)
 			drawGeom(geoms.octahedron, m4mul(r, m), v)
@@ -163,7 +187,7 @@ void main() {
 
 		function drawMoon(s, m, v) {
 			let r = m4rotY(-(Math.PI * s * .75))
-			let m_r = m4mul(m, m4rotY(Math.PI * s * .75), m4trans(0.25, 0, 0.25))
+			let m_r = m4mul(m, m4rotY(Math.PI * s * .75), m4trans(0.20, 0, 0.15))
 			let final_m = m4mul(m_r, r, m4scale(0.05, 0.05, 0.05))
 			drawGeom(geoms.tetrahedron, final_m, v)
 			return m_r
@@ -174,11 +198,14 @@ void main() {
 			gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
 			gl.useProgram(program)
 			let sun_m = m4trans(0, 0, 0)
-			let v = m4view([0, 0, 4], [0, 0, 0], [0, 1, 0])
+			let v = m4view([0, 0, 5], [0, 0, 0], [0, 1, 0])
 			// let v = m4view([1, 2, 3], [0, 0, 0], [0, 1, 0])
 			sun_m = drawSun(s, sun_m, v)
-			let m_r = drawEarth(s, sun_m, v)
-			drawMoon(s, m_r, v)
+			let earth_m = drawEarth(s, sun_m, v)
+			drawMoon(s, earth_m, v)
+			let mars_m = drawMars(s, sun_m, v)
+			drawPhobos(s, mars_m, v)
+			drawDeimos(s, mars_m, v)
 			requestAnimationFrame(tick)
 		}
 
